@@ -86,7 +86,11 @@ h4 {
 
 .site-header {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas:
+    "brand partner . about"
+    "titles titles titles titles"
+    "status status status status";
   align-items: center;
   gap: 4px 12px;
   padding: 12px var(--gutter);
@@ -112,9 +116,24 @@ h4 {
   font-size: 0.8rem;
 }
 
+.brand {
+  grid-area: brand;
+}
+
+.partner {
+  grid-area: partner;
+}
+
+.titles {
+  grid-area: titles;
+}
+
+.about-btn {
+  grid-area: about;
+}
+
 .status {
-  grid-column: 1 / -1;
-  grid-row: 2;
+  grid-area: status;
   display: flex;
   flex-wrap: wrap;
   gap: 2px 16px;
@@ -137,6 +156,25 @@ h4 {
 .status .dot.alt {
   background: #58b0a3;
   box-shadow: 0 0 0 3px rgba(88, 176, 163, 0.18);
+}
+
+.partner {
+  display: block;
+  margin-right: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  opacity: 0.92;
+  transition: opacity 0.15s;
+}
+
+.partner:hover {
+  opacity: 1;
+}
+
+.partner img {
+  display: block;
+  width: auto;
+  height: 20px;
 }
 
 .about-btn {
@@ -1241,13 +1279,21 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .site-header {
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: auto auto auto 1fr auto;
+    grid-template-areas: "brand partner titles status about";
     padding: 10px 24px;
   }
 
+  .partner {
+    margin-right: 8px;
+    padding-left: 14px;
+  }
+
+  .partner img {
+    height: 24px;
+  }
+
   .status {
-    grid-column: auto;
-    grid-row: auto;
     justify-content: flex-end;
     margin-top: 0;
   }
