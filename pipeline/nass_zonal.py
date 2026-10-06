@@ -106,7 +106,14 @@ def main() -> None:
     a.out.mkdir(parents=True, exist_ok=True)
     path = a.out / f"nass_{result['year']}.json"
     path.write_text(json.dumps(result, separators=(",", ":")))
+    write_index(a.out)
     print(f"wrote {path} ({len(result['weeks'])} weeks, {len(layers)} layers)")
+
+
+def write_index(out: Path) -> None:
+    years = sorted(int(p.stem.split("_")[1]) for p in out.glob("nass_[0-9][0-9][0-9][0-9].json"))
+    index = {"years": years, "latest": years[-1]}
+    (out / "index.json").write_text(json.dumps(index))
 
 
 if __name__ == "__main__":
