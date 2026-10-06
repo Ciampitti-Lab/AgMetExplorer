@@ -219,6 +219,7 @@ h4 {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  container: detail / inline-size;
   scroll-margin-top: 12px;
 }
 
@@ -600,10 +601,10 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  overflow: hidden;
   margin: 0 0 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -611,7 +612,9 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .eyebrow svg {
+  margin-right: 4px;
   color: var(--gold);
+  vertical-align: -3px;
 }
 
 .d-title h2 {
@@ -1236,16 +1239,17 @@ input[type="range"]::-moz-range-thumb {
   .charts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
+/* name, stats and tools share one row only when the panel itself is wide enough */
+@container detail (min-width: 860px) {
   .d-head {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas: "title stats tools";
   }
 
   .d-head .stats {
-    max-width: 460px;
-    justify-self: center;
-    width: 100%;
+    grid-template-columns: repeat(2, minmax(150px, 210px));
   }
 }
 
@@ -1346,17 +1350,6 @@ input[type="range"]::-moz-range-thumb {
     font-size: clamp(1rem, 1.4vw, 1.35rem);
   }
 
-  .d-head {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "title stats tools";
-  }
-
-  .d-head .stats {
-    grid-template-columns: repeat(2, minmax(150px, 210px));
-    max-width: none;
-    width: auto;
-  }
-
   .stat-value {
     font-size: 1.5rem;
   }
@@ -1383,6 +1376,26 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .stat-meta .stat-ref {
+    display: none;
+  }
+}
+
+/* short dashboards: one-line stat tiles leave room for the AgMet graphic */
+@media (min-width: 1100px) and (min-height: 660px) and (max-height: 820px) {
+  .stat {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    padding: 7px 12px;
+  }
+
+  .stat-value {
+    font-size: 1.3rem;
+  }
+
+  .meter,
+  .stat-ref {
     display: none;
   }
 }
