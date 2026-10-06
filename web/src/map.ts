@@ -137,8 +137,9 @@ export class UnitMap {
         if (!L.Browser.mobile) {
           path.bindTooltip(() => this.view?.tooltip(id) ?? "", {
             sticky: true,
-            direction: "top",
-            offset: [0, -8],
+            // to the right of the cursor so it is not clipped above northern counties
+            direction: "right",
+            offset: [14, 0],
             className: "unit-tip",
           });
         }
