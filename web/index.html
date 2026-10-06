@@ -170,14 +170,30 @@
           <button
             type="button"
             class="icon-btn"
-            data-zoom
-            aria-label="Toggle zoom"
-            title="Toggle zoom"
+            data-zoom-out
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="currentColor" d="M5 11h14v2H5z" />
+            </svg>
+          </button>
+          <button type="button" class="icon-btn" data-zoom-in aria-label="Zoom in" title="Zoom in">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path fill="currentColor" d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="icon-btn"
+            data-fit
+            aria-label="Fit to screen"
+            title="Fit to screen"
           >
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path
                 fill="currentColor"
-                d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"
+                d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z"
               />
             </svg>
           </button>
@@ -206,7 +222,14 @@
           </button>
         </div>
       </div>
-      <div class="lb-scroll"><img alt="" /></div>
+      <div class="lb-stage">
+        <div class="lb-canvas"><img alt="" draggable="false" /></div>
+      </div>
+      <p class="lb-hint">
+        Pinch or scroll to zoom, drag to move, double-tap to zoom in or out.<span class="lb-rotate">
+          Turn your phone sideways for a larger view.</span
+        >
+      </p>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>

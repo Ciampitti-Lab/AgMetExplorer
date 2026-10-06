@@ -601,10 +601,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .eyebrow {
-  overflow: hidden;
   margin: 0 0 2px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -618,11 +615,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .d-title h2 {
-  overflow: hidden;
   font-size: clamp(1.5rem, 3.2vw, 2.1rem);
   line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .d-sub {
@@ -632,9 +626,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .link {
-  padding: 0;
-  border: 0;
-  background: none;
   color: var(--gold);
   font-size: inherit;
   letter-spacing: inherit;
@@ -961,12 +952,10 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .d-name {
-  overflow: hidden;
+  line-height: 1.2;
   font-family: var(--font-head);
   font-size: 0.92rem;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .d-metrics {
@@ -1000,7 +989,7 @@ input[type="range"]::-moz-range-thumb {
   margin: 0;
   padding: 0;
   border: 0;
-  background: rgba(8, 8, 8, 0.97);
+  background: #080808;
   color: var(--text);
 }
 
@@ -1012,6 +1001,8 @@ input[type="range"]::-moz-range-thumb {
 #lightbox[open] {
   display: flex;
   flex-direction: column;
+  /* gestures zoom the graphic, never the page */
+  touch-action: none;
 }
 
 .lb-bar,
@@ -1029,11 +1020,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .lb-title {
-  overflow: hidden;
   font-family: var(--font-head);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .lb-actions {
@@ -1041,33 +1029,48 @@ input[type="range"]::-moz-range-thumb {
   gap: 8px;
 }
 
-.lb-scroll {
+.lb-stage {
+  position: relative;
   flex: 1;
-  display: grid;
-  place-items: center;
-  overflow: auto;
-  padding: 12px;
-  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
 }
 
-.lb-scroll img {
+.lb-canvas {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+}
+
+.lb-canvas img {
   display: block;
   max-width: 100%;
   max-height: 100%;
   border-radius: 8px;
   background: #fff;
-  cursor: zoom-in;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.lb-scroll.is-zoomed {
-  place-items: start;
+.lb-rotate {
+  display: none;
 }
 
-.lb-scroll.is-zoomed img {
-  width: 2000px;
-  max-width: none;
-  max-height: none;
-  cursor: zoom-out;
+@media (orientation: portrait) and (max-width: 600px) {
+  .lb-rotate {
+    display: inline;
+  }
+}
+
+.lb-hint {
+  margin: 0;
+  padding: 8px var(--gutter) max(10px, env(safe-area-inset-bottom));
+  color: var(--faint);
+  font-size: 0.74rem;
+  text-align: center;
 }
 
 .sheet {
@@ -1119,9 +1122,13 @@ input[type="range"]::-moz-range-thumb {
   right: 12px;
   bottom: max(12px, env(safe-area-inset-bottom));
   z-index: 1000;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name cta"
+    "val cta";
   align-items: center;
-  gap: 10px;
+  gap: 1px 12px;
   padding: 12px 14px;
   border: 1px solid var(--gold-line);
   border-radius: 14px;
@@ -1146,26 +1153,23 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .peek-name {
-  overflow: hidden;
+  grid-area: name;
+  line-height: 1.25;
   font-family: var(--font-head);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .peek-val {
-  overflow: hidden;
+  grid-area: val;
   color: var(--muted);
   font-size: 0.8rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .peek-cta {
+  grid-area: cta;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
   color: var(--gold);
   font-size: 0.82rem;
   white-space: nowrap;
@@ -1422,7 +1426,10 @@ input[type="range"]::-moz-range-thumb {
   .stat-value {
     font-size: 1.45rem;
   }
+}
 
+/* narrow panel: the dropdown goes under the name so long district names have room */
+@container detail (max-width: 559px) {
   .d-head {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:

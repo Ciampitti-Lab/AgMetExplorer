@@ -1,6 +1,7 @@
 import { renderChart, type Series } from "./chart";
 import { parseDate, type AppData } from "./data";
 import { UnitMap } from "./map";
+import { ImageViewer } from "./viewer";
 import { NO_DATA, colorFor, conditionLabel, gradientCss } from "./scales";
 import { readHash, writeHash, type State } from "./state";
 import type { Crop, Level, Product, SeriesLevel, Unit } from "./types";
@@ -48,6 +49,11 @@ export class App {
   private detail = $("#detail");
   private peek = $("#peek");
   private lightbox = $("#lightbox") as HTMLDialogElement;
+  private viewer = new ImageViewer(
+    $(".lb-stage"),
+    $(".lb-canvas"),
+    $(".lb-canvas img") as HTMLImageElement,
+  );
   private chartSizes = "";
 
   constructor(private data: AppData) {
@@ -293,7 +299,8 @@ export class App {
         this.select(id || null);
       });
     this.detail.querySelector("[data-clear]")?.addEventListener("click", () => this.select(null));
-    this.detail.querySelector("[data-goto-district]")?.addEventListener("click", () => {
+    this.detail.querySelector("[data-goto-district]")?.addEventListener("click", (e) => {
+      e.preventDefault();
       if (u) this.set({ level: "district", unit: u.asdCode });
     });
     this.detail.querySelectorAll<HTMLElement>("[data-district]").forEach((el) => {
@@ -337,7 +344,7 @@ export class App {
 
     const crumb =
       level === "county"
-        ? `County in <button class="link" data-goto-district>${esc(u.asdName)} district</button>`
+        ? `County in <a class="link" href="#crop=${crop}&level=district&layer=${this.state.product}&unit=${u.asdCode}" data-goto-district>${esc(u.asdName)} district</a>`
         : "Agricultural statistics district";
     const refName = level === "county" ? `${u.asdName} district` : "Indiana";
     const key = `<span class="series-key"><i class="k-main"></i>${esc(u.name.replace(/ (County|District)$/, ""))}<i class="k-ref"></i>${esc(refName)}</span>`;
@@ -476,10 +483,9 @@ export class App {
 
   private bindDialogs(): void {
     const box = this.lightbox;
-    const scroller = box.querySelector<HTMLElement>(".lb-scroll");
-    const toggleZoom = () => scroller?.classList.toggle("is-zoomed");
-    box.querySelector("[data-zoom]")?.addEventListener("click", toggleZoom);
-    box.querySelector("img")?.addEventListener("click", toggleZoom);
+    box.querySelector("[data-zoom-in]")?.addEventListener("click", () => this.viewer.zoomIn());
+    box.querySelector("[data-zoom-out]")?.addEventListener("click", () => this.viewer.zoomOut());
+    box.querySelector("[data-fit]")?.addEventListener("click", () => this.viewer.fit());
 
     const about = $("#about") as HTMLDialogElement;
     $("#about-open").addEventListener("click", () => {
@@ -498,19 +504,12 @@ export class App {
 
   private openLightbox(path: string, title: string): void {
     const box = this.lightbox;
-    const img = box.querySelector("img");
-    const scroller = box.querySelector<HTMLElement>(".lb-scroll");
     const url = `${import.meta.env.BASE_URL}agmet/${path}`;
-    if (img) {
-      img.src = url;
-      img.alt = `AgMet graphic, ${title}`;
-    }
+    this.viewer.show(url, `AgMet graphic, ${title}`);
     const heading = box.querySelector(".lb-title");
     if (heading) heading.textContent = title;
     const open = box.querySelector<HTMLAnchorElement>("[data-open]");
     if (open) open.href = url;
-    // phones start zoomed in; the 3x3 panel is unreadable at screen width
-    scroller?.classList.toggle("is-zoomed", window.innerWidth < 700);
     document.body.classList.add("no-scroll");
     box.showModal();
   }
