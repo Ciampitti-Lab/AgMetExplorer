@@ -1,0 +1,120 @@
+name: Build and deploy
+
+on:
+  schedule:
+    # NASS posts new layers Monday afternoon ET; Tuesday catches holiday weeks and late releases
+    - cron: "30 22 * * 1"
+    - cron: "0 14 * * 2"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [agmet-updated]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DATA_DIR: web/public/data
+      AGMET_DIR: web/public/agmet
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: pipeline/uv.lock
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Restore last good NASS data
+        uses: actions/cache/restore@v4
+        with:
+          path: nass-cache
+          key: nass-${{ github.run_id }}
+          restore-keys: nass-
+
+      - name: Build NASS data
+        id: nass
+        continue-on-error: true
+        working-directory: pipeline
+        run: |
+          uv sync --frozen
+          uv run nass_fetch.py --year "$(date -u +%Y)" --out "$RUNNER_TEMP/cpc"
+          uv run nass_zonal.py --in "$RUNNER_TEMP/cpc" --out "../$DATA_DIR"
+
+      - name: Fall back to cached NASS data
+        if: steps.nass.outcome == 'failure'
+        run: |
+          if [ ! -f nass-cache/index.json ]; then
+            echo "::error::NASS build failed and no cached data is available"
+            exit 1
+          fi
+          echo "::warning::NASS build failed, deploying the last good data"
+          mkdir -p "$DATA_DIR"
+          cp nass-cache/* "$DATA_DIR/"
+
+      - name: Save NASS data for next run
+        if: steps.nass.outcome == 'success'
+        run: |
+          mkdir -p nass-cache
+          cp "$DATA_DIR"/*.json nass-cache/
+
+      - name: Cache NASS data
+        if: steps.nass.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: nass-cache
+          key: nass-${{ github.run_id }}
+
+      - name: Download latest AgMet graphics
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("agmet-"))][0].tagName // empty')
+          if [ -z "$tag" ]; then
+            echo "::warning::No agmet-* release found, deploying without AgMet graphics"
+            exit 0
+          fi
+          echo "Using AgMet release $tag"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "agmet.zip" --dir "$RUNNER_TEMP"
+          mkdir -p "$AGMET_DIR"
+          unzip -q -o "$RUNNER_TEMP/agmet.zip" -d "$AGMET_DIR"
+          test -f "$AGMET_DIR/manifest.json"
+
+      - name: Build site
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
