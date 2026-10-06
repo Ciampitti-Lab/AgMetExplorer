@@ -157,13 +157,16 @@ export class App {
       if (next === undefined) return this.stopPlay();
       this.set({ week: next });
     }, 650);
+    this.render();
   }
 
   private stopPlay(): void {
+    const wasPlaying = this.playTimer !== null;
     if (this.playTimer !== null) window.clearInterval(this.playTimer);
     this.playTimer = null;
     $("#week-play").classList.remove("is-playing");
     $("#week-play").setAttribute("aria-label", "Play weeks");
+    if (wasPlaying) this.render();
   }
 
   private renderControls(): void {
@@ -218,10 +221,15 @@ export class App {
     });
   }
 
+  // playback always uses the fixed scale; a range that changes every frame makes colors jump
+  private scale(): "week" | "fixed" {
+    return this.playTimer !== null ? "fixed" : this.state.scale;
+  }
+
   /** Lowest and highest unit value this week, when colors are stretched to the week. */
   private weekRange(): [number, number] | null {
-    const { level, product, scale } = this.state;
-    if (scale !== "week") return null;
+    const { level, product } = this.state;
+    if (this.scale() !== "week") return null;
     const values = [...this.data.units[level].keys()]
       .map((id) => this.value(level, id, product)?.value)
       .filter((v): v is number => v !== undefined);
@@ -230,7 +238,9 @@ export class App {
   }
 
   private renderLegend(): void {
-    const { product, crop, scale, level } = this.state;
+    const { product, crop, level } = this.state;
+    const scale = this.scale();
+    const playing = this.playTimer !== null;
     const range = this.weekRange();
     const units = level === "county" ? "county" : "district";
     let ticks: string;
@@ -249,9 +259,11 @@ export class App {
         <button type="button" data-scale="week" aria-pressed="${scale === "week"}" title="Stretch colors from this week's lowest to highest value">This week</button>
         <button type="button" data-scale="fixed" aria-pressed="${scale === "fixed"}" title="Same colors every week, for comparing weeks">Fixed</button>
       </div>
-      <div class="legend-bar" style="background:${gradientCss(product)}"></div>
+      <div class="legend-bar" style="background:${gradientCss(product, scale === "week")}"></div>
       <div class="legend-ticks">${ticks}</div>
-      <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data</div>`;
+      <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data${
+        playing ? "<span>Fixed scale while playing</span>" : ""
+      }</div>`;
   }
 
   // ---- detail panel

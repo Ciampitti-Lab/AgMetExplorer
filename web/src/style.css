@@ -402,6 +402,11 @@ h4 {
   gap: 6px;
 }
 
+.legend-nodata span {
+  margin-left: auto;
+  color: var(--gold);
+}
+
 .legend-nodata i {
   display: inline-block;
   width: 14px;

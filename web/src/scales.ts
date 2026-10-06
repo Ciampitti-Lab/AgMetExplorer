@@ -7,8 +7,26 @@ type Stop = [number, string];
 export const PROGRESS_DOMAIN: [number, number] = [0, 1];
 export const CONDITION_DOMAIN: [number, number] = [2.5, 4.5];
 
-// Many hue steps so a few hundredths of difference between neighbors still shows.
+// Smooth ramps for the fixed scale and playback, so the season fades instead of flickering.
 export const PROGRESS_STOPS: Stop[] = [
+  [0, "#1f3a2e"],
+  [0.25, "#2f6b45"],
+  [0.5, "#6f9a45"],
+  [0.75, "#c6b35a"],
+  [1, "#f1e2b0"],
+];
+
+export const CONDITION_STOPS: Stop[] = [
+  [2.5, "#9a3b22"],
+  [3, "#d07a45"],
+  [3.5, "#e7dcc0"],
+  [4, "#5aa79c"],
+  [4.5, "#1f6a77"],
+];
+
+// Sharp ramps with many hue steps for a single week stretched to its own range, where
+// neighbors differ by a few hundredths.
+const PROGRESS_SHARP: Stop[] = [
   [0, "#2d1e4f"],
   [0.15, "#3b4c8c"],
   [0.3, "#2b7f8e"],
@@ -20,8 +38,7 @@ export const PROGRESS_STOPS: Stop[] = [
   [1, "#b8273a"],
 ];
 
-// Stops are packed between 3 and 4, where county condition indices usually sit.
-export const CONDITION_STOPS: Stop[] = [
+const CONDITION_SHARP: Stop[] = [
   [2.5, "#7a1f12"],
   [3, "#d0582c"],
   [3.3, "#f0a050"],
@@ -31,6 +48,11 @@ export const CONDITION_STOPS: Stop[] = [
   [4.2, "#1d6f8a"],
   [4.5, "#243f7a"],
 ];
+
+function stopsFor(product: Product, sharp: boolean): Stop[] {
+  if (product === "prog") return sharp ? PROGRESS_SHARP : PROGRESS_STOPS;
+  return sharp ? CONDITION_SHARP : CONDITION_STOPS;
+}
 
 export const NO_DATA = "#2a2a2a";
 
@@ -62,7 +84,7 @@ function interpolate(stops: Stop[], v: number): string {
 
 export function colorFor(product: Product, v: number | undefined): string {
   if (v === undefined) return NO_DATA;
-  return interpolate(product === "prog" ? PROGRESS_STOPS : CONDITION_STOPS, v);
+  return interpolate(stopsFor(product, false), v);
 }
 
 /** Color by position within [lo, hi], e.g. this week's lowest and highest unit. */
@@ -75,11 +97,11 @@ export function colorRelative(
   if (v === undefined) return NO_DATA;
   const t = hi - lo < 1e-6 ? 0.5 : (v - lo) / (hi - lo);
   const [d0, d1] = product === "prog" ? PROGRESS_DOMAIN : CONDITION_DOMAIN;
-  return colorFor(product, d0 + t * (d1 - d0));
+  return interpolate(stopsFor(product, true), d0 + t * (d1 - d0));
 }
 
-export function gradientCss(product: Product): string {
-  const stops = product === "prog" ? PROGRESS_STOPS : CONDITION_STOPS;
+export function gradientCss(product: Product, sharp: boolean): string {
+  const stops = stopsFor(product, sharp);
   const [lo, hi] = product === "prog" ? PROGRESS_DOMAIN : CONDITION_DOMAIN;
   const parts = stops.map(([v, c]) => `${c} ${((v - lo) / (hi - lo)) * 100}%`);
   return `linear-gradient(90deg, ${parts.join(", ")})`;
