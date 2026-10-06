@@ -19,16 +19,34 @@ TIF_RE = re.compile(
 DEFAULT_CROPS = ("corn", "soy")
 
 
+# nass.usda.gov rejects some non-browser clients from cloud runners
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0 Safari/537.36"
+    ),
+    "Accept": "application/zip,application/octet-stream,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.nass.usda.gov/Research_and_Science/Crop_Progress_Gridded_Layers/",
+}
+
+
 def download(url: str, attempts: int = 4, timeout: int = 300) -> bytes:
     for i in range(attempts):
         try:
-            r = requests.get(url, timeout=timeout)
+            r = requests.get(url, headers=HEADERS, timeout=timeout)
             r.raise_for_status()
             return r.content
+        except requests.HTTPError as e:
+            # a 4xx will not fix itself on retry
+            if e.response is not None and e.response.status_code < 500:
+                raise
+            if i == attempts - 1:
+                raise
         except requests.RequestException:
             if i == attempts - 1:
                 raise
-            time.sleep(30 * (i + 1))
+        time.sleep(30 * (i + 1))
     raise AssertionError("unreachable")
 
 
