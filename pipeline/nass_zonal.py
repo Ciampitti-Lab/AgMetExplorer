@@ -15,7 +15,7 @@ from nass_fetch import TIF_RE
 BOUNDARIES = Path(__file__).parent / "boundaries"
 CROP_KEYS = {"corn": "corn", "soy": "soybeans"}
 PRODUCT_KEYS = {"prog": "prog", "cond": "cond"}
-LEVELS = {"county": "GEOID", "district": "ASD_CODE"}
+LEVELS = {"county": "GEOID", "district": "ASD_CODE", "state": "STATEFP"}
 MIN_COVERAGE = 0.5
 
 
@@ -63,9 +63,14 @@ def build(layers: list[dict], boundaries: Path) -> dict:
         raise SystemExit(f"expected one year of layers, found {sorted(years)}")
     year = years.pop()
 
+    counties = gpd.read_file(boundaries / "indiana_counties.geojson")
+    state = counties.assign(STATEFP=counties["GEOID"].str[:2]).dissolve(
+        by="STATEFP", as_index=False
+    )
     units = {
-        "county": gpd.read_file(boundaries / "indiana_counties.geojson"),
+        "county": counties,
         "district": gpd.read_file(boundaries / "indiana_districts.geojson"),
+        "state": state[["STATEFP", "geometry"]],
     }
     out: dict[str, dict] = {lvl: defaultdict(dict) for lvl in LEVELS}
     for lvl, gdf in units.items():
@@ -89,6 +94,7 @@ def build(layers: list[dict], boundaries: Path) -> dict:
         ],
         "county": dict(out["county"]),
         "district": dict(out["district"]),
+        "state": dict(out["state"]),
     }
 
 
