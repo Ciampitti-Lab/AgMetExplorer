@@ -1,7 +1,7 @@
 import { renderChart, type Series } from "./chart";
 import { parseDate, type AppData } from "./data";
 import { UnitMap } from "./map";
-import { NO_DATA, colorFor, colorRelative, conditionLabel, gradientCss } from "./scales";
+import { NO_DATA, colorFor, conditionLabel, gradientCss } from "./scales";
 import { readHash, writeHash, type State } from "./state";
 import type { Crop, Level, Product, SeriesLevel, Unit } from "./types";
 
@@ -126,10 +126,6 @@ export class App {
     $("#week-prev").addEventListener("click", () => this.step(-1));
     $("#week-next").addEventListener("click", () => this.step(1));
     $("#week-play").addEventListener("click", () => this.togglePlay());
-    $("#legend").addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-scale]");
-      if (btn) this.set({ scale: btn.dataset.scale === "fixed" ? "fixed" : "week" });
-    });
   }
 
   private switchLevel(level: Level): void {
@@ -157,16 +153,13 @@ export class App {
       if (next === undefined) return this.stopPlay();
       this.set({ week: next });
     }, 650);
-    this.render();
   }
 
   private stopPlay(): void {
-    const wasPlaying = this.playTimer !== null;
     if (this.playTimer !== null) window.clearInterval(this.playTimer);
     this.playTimer = null;
     $("#week-play").classList.remove("is-playing");
     $("#week-play").setAttribute("aria-label", "Play weeks");
-    if (wasPlaying) this.render();
   }
 
   private renderControls(): void {
@@ -196,14 +189,10 @@ export class App {
 
   private renderMap(): void {
     const { level, product } = this.state;
-    const range = this.weekRange();
     this.map.render({
       level,
       selected: this.state.unit,
-      fill: (id) => {
-        const v = this.value(level, id, product)?.value;
-        return range ? colorRelative(product, v, range[0], range[1]) : colorFor(product, v);
-      },
+      fill: (id) => colorFor(product, this.value(level, id, product)?.value),
       label: (id) => {
         const p = this.value(level, id, product);
         return p ? p.value.toFixed(2).replace(/^0/, "") : "";
@@ -221,49 +210,19 @@ export class App {
     });
   }
 
-  // playback always uses the fixed scale; a range that changes every frame makes colors jump
-  private scale(): "week" | "fixed" {
-    return this.playTimer !== null ? "fixed" : this.state.scale;
-  }
-
-  /** Lowest and highest unit value this week, when colors are stretched to the week. */
-  private weekRange(): [number, number] | null {
-    const { level, product } = this.state;
-    if (this.scale() !== "week") return null;
-    const values = [...this.data.units[level].keys()]
-      .map((id) => this.value(level, id, product)?.value)
-      .filter((v): v is number => v !== undefined);
-    if (!values.length) return null;
-    return [Math.min(...values), Math.max(...values)];
-  }
-
   private renderLegend(): void {
-    const { product, crop, level } = this.state;
-    const scale = this.scale();
-    const playing = this.playTimer !== null;
-    const range = this.weekRange();
-    const units = level === "county" ? "county" : "district";
-    let ticks: string;
-    if (range) {
-      const mid = (range[0] + range[1]) / 2;
-      ticks = `<span>${range[0].toFixed(2)} lowest ${units}</span><span>${mid.toFixed(2)}</span><span>${range[1].toFixed(2)} highest</span>`;
-    } else {
-      ticks =
-        product === "prog"
-          ? `<span>0 none planted</span><span>0.5</span><span>1 harvested</span>`
-          : `<span>≤2.5</span><span>3 Fair</span><span>3.5</span><span>4 Good</span><span>≥4.5</span>`;
-    }
+    const { product, crop } = this.state;
+    const ticks =
+      product === "prog"
+        ? `<span>0 none planted</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1 harvested</span>`
+        : `<span>≤2.5</span><span>3 Fair</span><span>3.5</span><span>4 Good</span><span>≥4.5</span>`;
+    const step = product === "prog" ? "0.05" : "0.1";
     $("#legend").innerHTML = `
       <div class="legend-title">${CROP_NAMES[crop]} ${PRODUCT_NAMES[product].toLowerCase()} index</div>
-      <div class="seg mini" role="group" aria-label="Color scale">
-        <button type="button" data-scale="week" aria-pressed="${scale === "week"}" title="Stretch colors from this week's lowest to highest value">This week</button>
-        <button type="button" data-scale="fixed" aria-pressed="${scale === "fixed"}" title="Same colors every week, for comparing weeks">Fixed</button>
-      </div>
-      <div class="legend-bar" style="background:${gradientCss(product, scale === "week")}"></div>
+      <div class="legend-step">Bands of ${step}</div>
+      <div class="legend-bar" style="background:${gradientCss(product)}"></div>
       <div class="legend-ticks">${ticks}</div>
-      <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data${
-        playing ? "<span>Fixed scale while playing</span>" : ""
-      }</div>`;
+      <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data</div>`;
   }
 
   // ---- detail panel
