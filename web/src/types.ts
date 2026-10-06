@@ -3,6 +3,7 @@ import type { FeatureCollection, Geometry } from "geojson";
 export type Crop = "corn" | "soybeans";
 export type Product = "prog" | "cond";
 export type Level = "county" | "district";
+export type SeriesLevel = Level | "state";
 
 export type WeekValues = Record<string, number>;
 
@@ -24,6 +25,7 @@ export interface NassData {
   weeks: NassWeek[];
   county: Record<string, UnitSeries>;
   district: Record<string, UnitSeries>;
+  state: Record<string, UnitSeries>;
 }
 
 export interface NassIndex {

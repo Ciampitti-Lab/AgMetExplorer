@@ -1,6 +1,7 @@
 import L from "leaflet";
 import type { Feature, Geometry } from "geojson";
 import type { AppData } from "./data";
+import { labelColor } from "./scales";
 import type { Level } from "./types";
 
 export interface MapView {
@@ -8,6 +9,7 @@ export interface MapView {
   selected: string | null;
   fill: (id: string) => string;
   tooltip: (id: string) => string;
+  label: (id: string) => string;
 }
 
 const BASE_STYLE: L.PathOptions = { color: "#0a0a0a", weight: 0.8, fillOpacity: 0.92 };
@@ -28,25 +30,33 @@ export class UnitMap {
   private view: MapView | null = null;
   private hovered: string | null = null;
   private bounds: L.LatLngBounds;
+  private labels = new Map<string, HTMLElement>();
+  private labelLayer: L.LayerGroup | null = null;
 
   constructor(
     el: HTMLElement,
     private data: AppData,
     private onSelect: (id: string) => void,
   ) {
-    const touch = L.Browser.mobile;
+    // fixed view of Indiana: no zoom or pan, so the map never fights page scrolling
     this.map = L.map(el, {
-      zoomControl: !touch,
+      zoomControl: false,
       attributionControl: false,
-      zoomSnap: 0.1,
-      // one finger scrolls the page on phones, two fingers pan and zoom the map
-      dragging: !touch,
+      zoomSnap: 0.05,
+      dragging: false,
+      touchZoom: false,
+      doubleClickZoom: false,
       scrollWheelZoom: false,
       boxZoom: false,
       keyboard: false,
     });
+    this.map.createPane("labels");
+    const pane = this.map.getPane("labels");
+    if (pane) {
+      pane.style.zIndex = "640";
+      pane.style.pointerEvents = "none";
+    }
     this.bounds = L.geoJSON(data.counties).getBounds();
-    this.map.setMaxBounds(this.bounds.pad(0.6));
     this.fit();
     new ResizeObserver(() => {
       this.map.invalidateSize();
@@ -55,14 +65,17 @@ export class UnitMap {
   }
 
   fit(): void {
-    this.map.fitBounds(this.bounds, { padding: [10, 10] });
-    this.map.setMinZoom(this.map.getZoom() - 0.5);
+    this.map.fitBounds(this.bounds, { padding: [12, 12] });
   }
 
   render(view: MapView): void {
     this.view = view;
     if (view.level !== this.level) this.build(view.level);
     for (const [id, path] of this.paths) path.setStyle(this.styleFor(id));
+    for (const [id, el] of this.labels) {
+      el.textContent = view.label(id);
+      el.style.color = labelColor(view.fill(id));
+    }
     if (view.selected !== this.selectedId) this.drawSelection(view.selected);
     this.raise();
   }
@@ -108,8 +121,10 @@ export class UnitMap {
   private build(level: Level): void {
     this.units?.remove();
     this.outlines?.remove();
+    this.labelLayer?.remove();
     this.drawSelection(null);
     this.paths.clear();
+    this.labels.clear();
     this.level = level;
 
     const fc = level === "county" ? this.data.counties : this.data.districts;
@@ -152,6 +167,25 @@ export class UnitMap {
       }).addTo(this.map);
     } else {
       this.outlines = null;
+    }
+
+    // values are printed only on the nine districts; counties are too small for labels
+    this.labelLayer = L.layerGroup().addTo(this.map);
+    if (level !== "district") return;
+    for (const [id, path] of this.paths) {
+      const marker = L.marker((path as L.Polygon).getCenter(), {
+        pane: "labels",
+        interactive: false,
+        keyboard: false,
+        icon: L.divIcon({
+          className: `map-label ${level}`,
+          html: "<span></span>",
+          iconSize: [44, 16],
+          iconAnchor: [22, 8],
+        }),
+      }).addTo(this.labelLayer);
+      const span = marker.getElement()?.querySelector("span");
+      if (span) this.labels.set(id, span);
     }
   }
 }

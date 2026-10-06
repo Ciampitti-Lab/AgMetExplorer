@@ -1,11 +1,14 @@
 import type { Crop, Level, Product } from "./types";
 
+export type ColorScale = "week" | "fixed";
+
 export interface State {
   crop: Crop;
   level: Level;
   product: Product;
   week: number;
   unit: string | null;
+  scale: ColorScale;
 }
 
 const CROPS: readonly Crop[] = ["corn", "soybeans"];
@@ -25,6 +28,7 @@ export function readHash(latestWeek: number): State {
     product: pick(p.get("layer"), PRODUCTS, "prog"),
     week: Number.isInteger(week) && week > 0 ? week : latestWeek,
     unit: p.get("unit"),
+    scale: p.get("scale") === "fixed" ? "fixed" : "week",
   };
 }
 
@@ -32,5 +36,6 @@ export function writeHash(s: State, latestWeek: number): void {
   const p = new URLSearchParams({ crop: s.crop, level: s.level, layer: s.product });
   if (s.week !== latestWeek) p.set("week", String(s.week));
   if (s.unit) p.set("unit", s.unit);
+  if (s.scale === "fixed") p.set("scale", "fixed");
   history.replaceState(null, "", `#${p.toString()}`);
 }

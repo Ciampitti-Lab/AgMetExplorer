@@ -1,12 +1,13 @@
-import { renderChart } from "./chart";
+import { renderChart, type Series } from "./chart";
 import { parseDate, type AppData } from "./data";
 import { UnitMap } from "./map";
-import { CONDITION_LABELS, NO_DATA, colorFor, conditionLabel, gradientCss } from "./scales";
+import { NO_DATA, colorFor, colorRelative, conditionLabel, gradientCss } from "./scales";
 import { readHash, writeHash, type State } from "./state";
-import type { Crop, Level, Product, Unit } from "./types";
+import type { Crop, Level, Product, SeriesLevel, Unit } from "./types";
 
 const CROP_NAMES: Record<Crop, string> = { corn: "Corn", soybeans: "Soybeans" };
 const PRODUCT_NAMES: Record<Product, string> = { prog: "Progress", cond: "Condition" };
+const STATE_ID = "18";
 const NASS_DOCS =
   "https://www.nass.usda.gov/Research_and_Science/Crop_Progress_Gridded_Layers/CropProgressDescription.pdf";
 
@@ -31,6 +32,13 @@ function $(sel: string): HTMLElement {
   return el;
 }
 
+const ICONS = {
+  pin: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>`,
+  zoom: `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm1 2v3h3v2h-3v3H9v-3H6V9h3V6h2Z"/></svg>`,
+  down: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 16.6 5.4 10 6.8 8.6l5.2 5.2 5.2-5.2 1.4 1.4L12 16.6Z"/></svg>`,
+};
+
 export class App {
   private state: State;
   private map: UnitMap;
@@ -40,7 +48,7 @@ export class App {
   private detail = $("#detail");
   private peek = $("#peek");
   private lightbox = $("#lightbox") as HTMLDialogElement;
-  private chartWidth = 0;
+  private chartSizes = "";
 
   constructor(private data: AppData) {
     this.weeks = data.nass.weeks.map((w) => w.week);
@@ -54,13 +62,12 @@ export class App {
     this.map = new UnitMap($("#map"), data, (id) => this.select(id));
     if (this.state.unit) $(".map-hint").classList.add("is-hidden");
     this.bindControls();
-    this.bindLightbox();
+    this.bindDialogs();
     this.bindPeek();
     this.renderStatus();
 
     new ResizeObserver(() => {
-      const w = this.chartContainerWidth();
-      if (Math.abs(w - this.chartWidth) > 4) this.renderDetail();
+      if (this.measureCharts() !== this.chartSizes) this.renderCharts();
     }).observe(this.detail);
 
     this.render();
@@ -90,6 +97,10 @@ export class App {
     this.renderPeek();
   }
 
+  private value(level: SeriesLevel, id: string, product: Product, week = this.state.week) {
+    return this.data.series.at(level, id, this.state.crop, product, week);
+  }
+
   // ---- controls
 
   private bindControls(): void {
@@ -115,6 +126,10 @@ export class App {
     $("#week-prev").addEventListener("click", () => this.step(-1));
     $("#week-next").addEventListener("click", () => this.step(1));
     $("#week-play").addEventListener("click", () => this.togglePlay());
+    $("#legend").addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-scale]");
+      if (btn) this.set({ scale: btn.dataset.scale === "fixed" ? "fixed" : "week" });
+    });
   }
 
   private switchLevel(level: Level): void {
@@ -138,8 +153,7 @@ export class App {
     $("#week-play").classList.add("is-playing");
     $("#week-play").setAttribute("aria-label", "Pause");
     this.playTimer = window.setInterval(() => {
-      const i = this.weeks.indexOf(this.state.week);
-      const next = this.weeks[i + 1];
+      const next = this.weeks[this.weeks.indexOf(this.state.week) + 1];
       if (next === undefined) return this.stopPlay();
       this.set({ week: next });
     }, 650);
@@ -178,15 +192,22 @@ export class App {
   // ---- map
 
   private renderMap(): void {
-    const { level, crop, product, week } = this.state;
-    const s = this.data.series;
+    const { level, product } = this.state;
+    const range = this.weekRange();
     this.map.render({
       level,
       selected: this.state.unit,
-      fill: (id) => colorFor(product, s.at(level, id, crop, product, week)?.value),
+      fill: (id) => {
+        const v = this.value(level, id, product)?.value;
+        return range ? colorRelative(product, v, range[0], range[1]) : colorFor(product, v);
+      },
+      label: (id) => {
+        const p = this.value(level, id, product);
+        return p ? p.value.toFixed(2).replace(/^0/, "") : "";
+      },
       tooltip: (id) => {
         const u = this.data.units[level].get(id);
-        const p = s.at(level, id, crop, product, week);
+        const p = this.value(level, id, product);
         const value = p
           ? product === "cond"
             ? `${p.value.toFixed(2)} <span>${conditionLabel(p.value)}</span>`
@@ -197,27 +218,43 @@ export class App {
     });
   }
 
+  /** Lowest and highest unit value this week, when colors are stretched to the week. */
+  private weekRange(): [number, number] | null {
+    const { level, product, scale } = this.state;
+    if (scale !== "week") return null;
+    const values = [...this.data.units[level].keys()]
+      .map((id) => this.value(level, id, product)?.value)
+      .filter((v): v is number => v !== undefined);
+    if (!values.length) return null;
+    return [Math.min(...values), Math.max(...values)];
+  }
+
   private renderLegend(): void {
-    const { product, crop } = this.state;
-    const ticks =
-      product === "prog"
-        ? `<span>0 · none planted</span><span>1 · all harvested</span>`
-        : CONDITION_LABELS.map((l) => `<span>${l.replace("Very poor", "V. poor")}</span>`).join("");
+    const { product, crop, scale, level } = this.state;
+    const range = this.weekRange();
+    const units = level === "county" ? "county" : "district";
+    let ticks: string;
+    if (range) {
+      const mid = (range[0] + range[1]) / 2;
+      ticks = `<span>${range[0].toFixed(2)} lowest ${units}</span><span>${mid.toFixed(2)}</span><span>${range[1].toFixed(2)} highest</span>`;
+    } else {
+      ticks =
+        product === "prog"
+          ? `<span>0 none planted</span><span>0.5</span><span>1 harvested</span>`
+          : `<span>≤2.5</span><span>3 Fair</span><span>3.5</span><span>4 Good</span><span>≥4.5</span>`;
+    }
     $("#legend").innerHTML = `
-      <div class="legend-title">${CROP_NAMES[crop]} ${PRODUCT_NAMES[product].toLowerCase()}${
-        product === "prog" ? " index" : ""
-      }</div>
+      <div class="legend-title">${CROP_NAMES[crop]} ${PRODUCT_NAMES[product].toLowerCase()} index</div>
+      <div class="seg mini" role="group" aria-label="Color scale">
+        <button type="button" data-scale="week" aria-pressed="${scale === "week"}" title="Stretch colors from this week's lowest to highest value">This week</button>
+        <button type="button" data-scale="fixed" aria-pressed="${scale === "fixed"}" title="Same colors every week, for comparing weeks">Fixed</button>
+      </div>
       <div class="legend-bar" style="background:${gradientCss(product)}"></div>
-      <div class="legend-ticks ${product}">${ticks}</div>
+      <div class="legend-ticks">${ticks}</div>
       <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data</div>`;
   }
 
   // ---- detail panel
-
-  private chartContainerWidth(): number {
-    const card = this.detail.querySelector<HTMLElement>(".chart");
-    return Math.round(card?.clientWidth ?? this.detail.clientWidth - 32);
-  }
 
   private agmetUpdated(crop: Crop): string | null {
     const levels = this.data.agmet[crop];
@@ -238,152 +275,203 @@ export class App {
       .join("");
     const noun = level === "county" ? "county" : "district";
     return `<label class="picker"><span class="sr-only">Choose a ${noun}</span>
-      <select data-picker><option value="" ${unit ? "" : "selected"} disabled>Choose a ${noun}…</option>${options}</select>
+      <select data-picker><option value="" ${unit ? "" : "selected"}>Find a ${noun}…</option>${options}</select>
     </label>`;
+  }
+
+  private statsHtml(level: SeriesLevel, id: string, compare: Unit | null): string {
+    const { crop, week } = this.state;
+    const s = this.data.series;
+    const tile = (product: Product): string => {
+      const now = s.at(level, id, crop, product, week);
+      const prev = s.before(level, id, crop, product, week);
+      const ref = compare ? s.at("state", STATE_ID, crop, product, week) : undefined;
+      let delta = "";
+      if (now && prev) {
+        const d = now.value - prev.value;
+        const sign = d > 0.0005 ? "+" : d < -0.0005 ? "−" : "±";
+        delta = `<span class="stat-delta">${sign}${Math.abs(d).toFixed(2)} wk/wk</span>`;
+      }
+      const refHtml = ref ? `<span class="stat-ref">Indiana ${ref.value.toFixed(2)}</span>` : "";
+      const chip =
+        product === "cond" && now
+          ? `<span class="chip" style="--chip:${colorFor("cond", now.value)}">${conditionLabel(now.value)}</span>`
+          : "";
+      const fill = now ? colorFor(product, now.value) : "transparent";
+      const pct = now ? (product === "prog" ? now.value : (now.value - 1) / 4) * 100 : 0;
+      return `<div class="stat">
+          <span class="stat-label">${PRODUCT_NAMES[product]}${product === "prog" ? " index" : ""}</span>
+          <span class="stat-value">${now ? now.value.toFixed(2) : "–"}${chip}</span>
+          <span class="stat-meta">${delta}${refHtml}</span>
+          <div class="meter"><span style="width:${pct}%;background:${fill}"></span></div>
+        </div>`;
+    };
+    return `<div class="stats">${tile("prog")}${tile("cond")}</div>`;
+  }
+
+  private weekNote(): string {
+    const w = this.data.nass.weeks.find((x) => x.week === this.state.week);
+    return w ? `Week ending ${fmtDate(w.week_ending)}` : "";
   }
 
   private renderDetail(): void {
     const u = this.unit();
-    if (!u) {
-      this.detail.innerHTML = `
-        <div class="empty">
-          <div class="empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>
-          </div>
-          <h2>Select a ${this.state.level === "county" ? "county" : "district"} on the map</h2>
-          <p>See NASS crop progress and condition for the area next to its AgMet graphic of vegetation, rainfall, soil moisture and temperature.</p>
-          ${this.pickerHtml()}
-        </div>`;
-      this.bindPicker();
-      return;
-    }
+    this.detail.classList.toggle("is-overview", !u);
+    this.detail.innerHTML = u ? this.unitHtml(u) : this.overviewHtml();
 
-    const { crop, level, week } = this.state;
-    const s = this.data.series;
-    const prog = s.at(level, u.id, crop, "prog", week);
-    const cond = s.at(level, u.id, crop, "cond", week);
-    const progPrev = s.before(level, u.id, crop, "prog", week);
-    const condPrev = s.before(level, u.id, crop, "cond", week);
-    const w = this.data.nass.weeks.find((x) => x.week === week);
+    this.detail
+      .querySelector<HTMLSelectElement>("[data-picker]")
+      ?.addEventListener("change", (e) => {
+        const id = (e.target as HTMLSelectElement).value;
+        this.select(id || null);
+      });
+    this.detail.querySelector("[data-clear]")?.addEventListener("click", () => this.select(null));
+    this.detail.querySelector("[data-goto-district]")?.addEventListener("click", () => {
+      if (u) this.set({ level: "district", unit: u.asdCode });
+    });
+    this.detail.querySelectorAll<HTMLElement>("[data-district]").forEach((el) => {
+      el.addEventListener("click", () => {
+        $(".map-hint").classList.add("is-hidden");
+        this.set({ level: "district", unit: el.dataset.district ?? null });
+      });
+    });
+    this.detail.querySelector<HTMLButtonElement>(".agmet-thumb")?.addEventListener("click", (e) => {
+      const path = (e.currentTarget as HTMLElement).dataset.full ?? "";
+      if (u) this.openLightbox(path, `${u.name}, ${CROP_NAMES[this.state.crop].toLowerCase()}`);
+    });
+    this.renderCharts();
+  }
 
-    const delta = (now: number | undefined, prev: number | undefined): string => {
-      if (now === undefined || prev === undefined) return "";
-      const d = now - prev;
-      const sign = d > 0.0005 ? "+" : d < -0.0005 ? "−" : "±";
-      return `<span class="stat-delta">${sign}${Math.abs(d).toFixed(2)} from prior week</span>`;
-    };
+  private chartsHtml(keyHtml: string): string {
+    const card = (product: Product, title: string, hint: string) => `
+      <section class="card chart-card">
+        <header class="card-head">
+          <h3>${title}</h3>
+          <span class="info" tabindex="0" aria-label="${hint}" data-hint="${hint}">?</span>
+          ${keyHtml}
+        </header>
+        <div class="chart" data-chart="${product}"></div>
+      </section>`;
+    return `<div class="charts">
+      ${card("prog", "Crop progress", "Index from 0 (none planted) to 1 (all harvested), shown as a running maximum. Grey dots mark weekly values that dipped.")}
+      ${card("cond", "Crop condition", "Index from 1 (very poor) to 5 (excellent), weighted from the share of acres in each rating.")}
+    </div>`;
+  }
 
+  private unitHtml(u: Unit): string {
+    const { crop, level } = this.state;
     const agmet = this.data.agmet[crop]?.[level]?.[u.id];
     const agmetHtml = agmet
-      ? `<button class="agmet-thumb" type="button" data-full="${esc(agmet.path)}">
-           <img src="${import.meta.env.BASE_URL}agmet/${esc(agmet.path)}" alt="AgMet graphic for ${esc(u.name)}, ${CROP_NAMES[crop].toLowerCase()}" loading="lazy" width="2000" height="1000" />
-           <span class="zoom-hint"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm1 2v3h3v2h-3v3H9v-3H6V9h3V6h2Z"/></svg>Enlarge</span>
+      ? `<button class="agmet-thumb" type="button" data-full="${esc(agmet.path)}" aria-label="Enlarge AgMet graphic">
+           <img src="${import.meta.env.BASE_URL}agmet/${esc(agmet.path)}" alt="AgMet graphic for ${esc(u.name)}, ${CROP_NAMES[crop].toLowerCase()}" width="2000" height="1000" />
+           <span class="zoom-hint">${ICONS.zoom}Enlarge</span>
          </button>`
       : `<div class="unavailable">No AgMet graphic is available for this ${level} and crop yet.</div>`;
 
     const crumb =
       level === "county"
-        ? `County · <button class="link" data-goto-district>${esc(u.asdName)} district</button>`
+        ? `County in <button class="link" data-goto-district>${esc(u.asdName)} district</button>`
         : "Agricultural statistics district";
+    const refName = level === "county" ? `${u.asdName} district` : "Indiana";
+    const key = `<span class="series-key"><i class="k-main"></i>${esc(u.name.replace(/ (County|District)$/, ""))}<i class="k-ref"></i>${esc(refName)}</span>`;
 
-    this.detail.innerHTML = `
-      <div class="detail-head">
-        <div>
+    return `
+      <div class="d-head">
+        <div class="d-title">
           <p class="eyebrow">${crumb}</p>
           <h2>${esc(u.name)}</h2>
+          <p class="d-sub">${CROP_NAMES[crop]}, ${this.weekNote().replace("Week", "week")}</p>
         </div>
+        ${this.statsHtml(level, u.id, u)}
         <div class="head-tools">
           ${this.pickerHtml()}
-          <button class="icon-btn" data-clear aria-label="Clear selection" title="Clear selection">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
-          </button>
+          <button class="icon-btn" data-clear aria-label="Back to Indiana overview" title="Back to Indiana overview">${ICONS.close}</button>
         </div>
       </div>
-
-      <div class="stats">
-        <div class="stat">
-          <span class="stat-label">${CROP_NAMES[crop]} progress index</span>
-          <span class="stat-value">${prog ? prog.value.toFixed(2) : "–"}</span>
-          ${delta(prog?.value, progPrev?.value)}
-          <div class="meter"><span style="width:${(prog?.value ?? 0) * 100}%"></span></div>
-        </div>
-        <div class="stat">
-          <span class="stat-label">${CROP_NAMES[crop]} condition</span>
-          <span class="stat-value">${cond ? cond.value.toFixed(2) : "–"}${
-            cond
-              ? `<span class="chip" style="--chip:${colorFor("cond", cond.value)}">${conditionLabel(cond.value)}</span>`
-              : ""
-          }</span>
-          ${delta(cond?.value, condPrev?.value)}
-          <div class="meter"><span style="width:${cond ? ((cond.value - 1) / 4) * 100 : 0}%;background:${cond ? colorFor("cond", cond.value) : "none"}"></span></div>
-        </div>
-      </div>
-      <p class="stat-note">${w ? `Week ending ${fmtDate(w.week_ending)} (NASS week ${w.week})` : ""}${
-        prog || cond ? "" : " · no NASS values reported for this week"
-      }</p>
-
-      <section class="card">
+      <section class="card agmet-card">
         <header class="card-head">
           <h3>AgMet graphic</h3>
-          <span class="muted">${CROP_NAMES[crop]}${agmet ? ` · updated ${fmtDate(agmet.updated)}` : ""}</span>
+          <span class="muted">NASA Harvest${agmet ? `, updated ${fmtDate(agmet.updated)}` : ""}</span>
         </header>
         ${agmetHtml}
       </section>
+      ${this.chartsHtml(key)}`;
+  }
 
-      <section class="card">
+  private overviewHtml(): string {
+    const { crop, product } = this.state;
+    const tiles = [...this.data.units.district.values()]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((d) => {
+        const prog = this.value("district", d.id, "prog");
+        const cond = this.value("district", d.id, "cond");
+        const active = product === "prog" ? prog : cond;
+        return `<button class="d-tile" type="button" data-district="${d.id}" style="--tile:${colorFor(product, active?.value)}">
+          <span class="d-name">${esc(d.asdName)}</span>
+          <span class="d-metrics">
+            <span><small>Progress</small>${prog ? prog.value.toFixed(2) : "–"}</span>
+            <span><small>Condition</small>${cond ? cond.value.toFixed(2) : "–"}</span>
+          </span>
+        </button>`;
+      })
+      .join("");
+    const key = `<span class="series-key"><i class="k-main"></i>Indiana<i class="k-faint"></i>Districts</span>`;
+
+    return `
+      <div class="d-head">
+        <div class="d-title">
+          <p class="eyebrow">${ICONS.pin} Statewide overview</p>
+          <h2>Indiana</h2>
+          <p class="d-sub">${CROP_NAMES[crop]}, ${this.weekNote().replace("Week", "week")}</p>
+        </div>
+        ${this.statsHtml("state", STATE_ID, null)}
+        <div class="head-tools">${this.pickerHtml()}</div>
+      </div>
+      <section class="card districts-card">
         <header class="card-head">
-          <h3>Crop progress</h3>
-          ${this.chartLegend(u)}
+          <h3>Agricultural statistics districts</h3>
+          <span class="muted">Laid out as on the map. Select one for its AgMet graphic.</span>
         </header>
-        <div class="chart" data-chart="prog"></div>
-        <p class="hint">Index from 0 (none planted) to 1 (all harvested). Shown as a running maximum; grey dots mark weekly values that dipped.</p>
+        <div class="d-grid">${tiles}</div>
       </section>
-
-      <section class="card">
-        <header class="card-head">
-          <h3>Crop condition</h3>
-          ${this.chartLegend(u)}
-        </header>
-        <div class="chart" data-chart="cond"></div>
-        <p class="hint">Index from 1 (very poor) to 5 (excellent), weighted from the share of acres in each rating.</p>
-      </section>`;
-
-    this.bindPicker();
-    this.detail.querySelector("[data-clear]")?.addEventListener("click", () => this.select(null));
-    this.detail.querySelector("[data-goto-district]")?.addEventListener("click", () => {
-      this.set({ level: "district", unit: u.asdCode });
-    });
-    this.detail.querySelector<HTMLButtonElement>(".agmet-thumb")?.addEventListener("click", (e) => {
-      const path = (e.currentTarget as HTMLElement).dataset.full ?? "";
-      this.openLightbox(path, `${u.name} · ${CROP_NAMES[crop]}`);
-    });
-    this.renderCharts(u);
+      ${this.chartsHtml(key)}`;
   }
 
-  private chartLegend(u: Unit): string {
-    if (u.level !== "county") return "";
-    return `<span class="series-key"><i class="k-main"></i>${esc(u.name.replace(" County", ""))}<i class="k-ref"></i>${esc(u.asdName)} district</span>`;
+  private measureCharts(): string {
+    return [...this.detail.querySelectorAll<HTMLElement>(".chart")]
+      .map((el) => `${el.clientWidth}x${el.clientHeight}`)
+      .join(",");
   }
 
-  private bindPicker(): void {
-    this.detail
-      .querySelector<HTMLSelectElement>("[data-picker]")
-      ?.addEventListener("change", (e) => {
-        const id = (e.target as HTMLSelectElement).value;
-        if (id) this.select(id);
-      });
-  }
-
-  private renderCharts(u: Unit): void {
-    const { crop, level, week } = this.state;
+  private renderCharts(): void {
+    const u = this.unit();
+    const { crop, week } = this.state;
     const s = this.data.series;
-    this.chartWidth = this.chartContainerWidth();
     const wk = this.data.nass.weeks.find((x) => x.week === week);
     for (const product of ["prog", "cond"] as const) {
       const el = this.detail.querySelector<HTMLElement>(`[data-chart="${product}"]`);
       if (!el) continue;
-      const primary = s.get(level, u.id, crop, product);
-      if (!primary.length) {
+      let primary: Series;
+      let references: Series[];
+      if (u) {
+        primary = { label: u.name, points: s.get(u.level, u.id, crop, product) };
+        references =
+          u.level === "county"
+            ? [
+                {
+                  label: `${u.asdName} district`,
+                  points: s.get("district", u.asdCode, crop, product),
+                },
+              ]
+            : [{ label: "Indiana", points: s.get("state", STATE_ID, crop, product) }];
+      } else {
+        primary = { label: "Indiana", points: s.get("state", STATE_ID, crop, product) };
+        references = [...this.data.units.district.values()].map((d) => ({
+          label: d.name,
+          points: s.get("district", d.id, crop, product),
+        }));
+      }
+      if (!primary.points.length) {
         el.innerHTML = `<div class="unavailable">No ${PRODUCT_NAMES[product].toLowerCase()} data reported yet this season.</div>`;
         continue;
       }
@@ -392,17 +480,18 @@ export class App {
           product,
           year: this.data.nass.year,
           primary,
-          primaryLabel: u.name,
-          reference: level === "county" ? s.get("district", u.asdCode, crop, product) : null,
-          referenceLabel: `${u.asdName} district`,
+          references,
+          referenceStyle: u ? "dashed" : "faint",
           selected: wk ? parseDate(wk.week_ending) : null,
-          width: this.chartWidth,
+          width: Math.max(240, el.clientWidth),
+          height: Math.max(110, Math.min(420, el.clientHeight || 200)),
         }),
       );
     }
+    this.chartSizes = this.measureCharts();
   }
 
-  // ---- header, lightbox, mobile peek bar
+  // ---- header, dialogs, mobile peek bar
 
   private renderStatus(): void {
     const last = this.data.nass.weeks[this.data.nass.weeks.length - 1];
@@ -411,27 +500,33 @@ export class App {
       .sort()
       .pop();
     $("#status").innerHTML = `
-      <span><i class="dot"></i>NASS data through week ${last?.week ?? "–"}${
-        last ? ` (week ending ${fmtDate(last.week_ending)})` : ""
+      <span><i class="dot"></i>NASS through week ${last?.week ?? "–"}${
+        last ? ` (${fmtDate(last.week_ending)})` : ""
       }</span>
-      <span><i class="dot alt"></i>AgMet graphics updated ${agmet ? fmtDate(agmet) : "–"}</span>`;
+      <span><i class="dot alt"></i>AgMet updated ${agmet ? fmtDate(agmet) : "–"}</span>`;
     $("#nass-docs").setAttribute("href", NASS_DOCS);
   }
 
-  private bindLightbox(): void {
+  private bindDialogs(): void {
     const box = this.lightbox;
     const scroller = box.querySelector<HTMLElement>(".lb-scroll");
-    box.querySelector("[data-close]")?.addEventListener("click", () => box.close());
-    box
-      .querySelector("[data-zoom]")
-      ?.addEventListener("click", () => scroller?.classList.toggle("is-zoomed"));
-    box
-      .querySelector("img")
-      ?.addEventListener("click", () => scroller?.classList.toggle("is-zoomed"));
-    box.addEventListener("click", (e) => {
-      if (e.target === box) box.close();
+    const toggleZoom = () => scroller?.classList.toggle("is-zoomed");
+    box.querySelector("[data-zoom]")?.addEventListener("click", toggleZoom);
+    box.querySelector("img")?.addEventListener("click", toggleZoom);
+
+    const about = $("#about") as HTMLDialogElement;
+    $("#about-open").addEventListener("click", () => {
+      document.body.classList.add("no-scroll");
+      about.showModal();
     });
-    box.addEventListener("close", () => document.body.classList.remove("no-scroll"));
+
+    for (const dialog of [box, about]) {
+      dialog.querySelector("[data-close]")?.addEventListener("click", () => dialog.close());
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) dialog.close();
+      });
+      dialog.addEventListener("close", () => document.body.classList.remove("no-scroll"));
+    }
   }
 
   private openLightbox(path: string, title: string): void {
@@ -472,11 +567,11 @@ export class App {
     const u = this.unit();
     this.peek.hidden = !u;
     if (!u) return;
-    const { crop, level, product, week } = this.state;
-    const p = this.data.series.at(level, u.id, crop, product, week);
+    const { level, product } = this.state;
+    const p = this.value(level, u.id, product);
     const value = p
-      ? `${PRODUCT_NAMES[product]} ${p.value.toFixed(2)}${product === "cond" ? ` · ${conditionLabel(p.value)}` : ""}`
+      ? `${PRODUCT_NAMES[product]} ${p.value.toFixed(2)}${product === "cond" ? ` (${conditionLabel(p.value)})` : ""}`
       : "No data this week";
-    this.peek.innerHTML = `<span class="peek-name">${esc(u.name)}</span><span class="peek-val">${value}</span><span class="peek-cta">Details<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 16.6 5.4 10 6.8 8.6l5.2 5.2 5.2-5.2 1.4 1.4L12 16.6Z"/></svg></span>`;
+    this.peek.innerHTML = `<span class="peek-name">${esc(u.name)}</span><span class="peek-val">${value}</span><span class="peek-cta">Details${ICONS.down}</span>`;
   }
 }

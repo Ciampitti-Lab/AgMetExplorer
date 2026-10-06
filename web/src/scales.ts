@@ -2,24 +2,37 @@ import type { Product } from "./types";
 
 type Stop = [number, string];
 
-// Fixed domains so colors mean the same thing every week.
+// Fixed domains so colors mean the same thing every week. Condition is clamped to 2.5-4.5
+// because county indices rarely leave that band and the full 1-5 range washes out the map.
+export const PROGRESS_DOMAIN: [number, number] = [0, 1];
+export const CONDITION_DOMAIN: [number, number] = [2.5, 4.5];
+
+// Many hue steps so a few hundredths of difference between neighbors still shows.
 export const PROGRESS_STOPS: Stop[] = [
-  [0, "#26302a"],
-  [0.25, "#35603f"],
-  [0.5, "#5f8f48"],
-  [0.75, "#a9ab5a"],
-  [1, "#ecdcaf"],
+  [0, "#2d1e4f"],
+  [0.15, "#3b4c8c"],
+  [0.3, "#2b7f8e"],
+  [0.45, "#2fa77a"],
+  [0.6, "#8fca4e"],
+  [0.7, "#f0d35a"],
+  [0.8, "#f39c3c"],
+  [0.9, "#e0573a"],
+  [1, "#b8273a"],
 ];
 
+// Stops are packed between 3 and 4, where county condition indices usually sit.
 export const CONDITION_STOPS: Stop[] = [
-  [1, "#7f2f1a"],
-  [2, "#c06a35"],
-  [3, "#d8cdb4"],
-  [4, "#4f9d93"],
-  [5, "#155f6b"],
+  [2.5, "#7a1f12"],
+  [3, "#d0582c"],
+  [3.3, "#f0a050"],
+  [3.5, "#f3e7c4"],
+  [3.7, "#8fd0c0"],
+  [3.9, "#3a9e9a"],
+  [4.2, "#1d6f8a"],
+  [4.5, "#243f7a"],
 ];
 
-export const NO_DATA = "#1d1d1d";
+export const NO_DATA = "#2a2a2a";
 
 export const CONDITION_LABELS = ["Very poor", "Poor", "Fair", "Good", "Excellent"] as const;
 
@@ -52,9 +65,22 @@ export function colorFor(product: Product, v: number | undefined): string {
   return interpolate(product === "prog" ? PROGRESS_STOPS : CONDITION_STOPS, v);
 }
 
+/** Color by position within [lo, hi], e.g. this week's lowest and highest unit. */
+export function colorRelative(
+  product: Product,
+  v: number | undefined,
+  lo: number,
+  hi: number,
+): string {
+  if (v === undefined) return NO_DATA;
+  const t = hi - lo < 1e-6 ? 0.5 : (v - lo) / (hi - lo);
+  const [d0, d1] = product === "prog" ? PROGRESS_DOMAIN : CONDITION_DOMAIN;
+  return colorFor(product, d0 + t * (d1 - d0));
+}
+
 export function gradientCss(product: Product): string {
   const stops = product === "prog" ? PROGRESS_STOPS : CONDITION_STOPS;
-  const [lo, hi] = product === "prog" ? [0, 1] : [1, 5];
+  const [lo, hi] = product === "prog" ? PROGRESS_DOMAIN : CONDITION_DOMAIN;
   const parts = stops.map(([v, c]) => `${c} ${((v - lo) / (hi - lo)) * 100}%`);
   return `linear-gradient(90deg, ${parts.join(", ")})`;
 }
@@ -62,4 +88,12 @@ export function gradientCss(product: Product): string {
 export function conditionLabel(v: number): string {
   const i = Math.min(4, Math.max(0, Math.round(v) - 1));
   return CONDITION_LABELS[i] ?? "";
+}
+
+/** Dark or light text for a label drawn on top of a fill color. */
+export function labelColor(fill: string): string {
+  const m = fill.match(/\d+/g);
+  const rgb = fill.startsWith("#") ? hexToRgb(fill) : (m ?? []).slice(0, 3).map(Number);
+  const [r = 0, g = 0, b = 0] = rgb;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111111" : "#f4f1ea";
 }

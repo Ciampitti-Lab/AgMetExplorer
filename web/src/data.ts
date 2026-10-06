@@ -8,6 +8,7 @@ import type {
   NassIndex,
   Point,
   Product,
+  SeriesLevel,
   Unit,
 } from "./types";
 
@@ -92,12 +93,12 @@ export class SeriesStore {
     for (const w of nass.weeks) this.dates.set(w.week, parseDate(w.week_ending));
   }
 
-  get(level: Level, id: string, crop: Crop, product: Product): Point[] {
+  get(level: SeriesLevel, id: string, crop: Crop, product: Product): Point[] {
     const key = `${level}|${id}|${crop}|${product}`;
     const hit = this.cache.get(key);
     if (hit) return hit;
 
-    const values = this.nass[level][id]?.[crop]?.[product] ?? {};
+    const values = this.nass[level]?.[id]?.[crop]?.[product] ?? {};
     const weeks = Object.keys(values)
       .map(Number)
       .sort((a, b) => a - b);
@@ -114,12 +115,24 @@ export class SeriesStore {
     return points;
   }
 
-  at(level: Level, id: string, crop: Crop, product: Product, week: number): Point | undefined {
+  at(
+    level: SeriesLevel,
+    id: string,
+    crop: Crop,
+    product: Product,
+    week: number,
+  ): Point | undefined {
     return this.get(level, id, crop, product).find((p) => p.week === week);
   }
 
   /** Last point at or before the given week, used for week-over-week change. */
-  before(level: Level, id: string, crop: Crop, product: Product, week: number): Point | undefined {
+  before(
+    level: SeriesLevel,
+    id: string,
+    crop: Crop,
+    product: Product,
+    week: number,
+  ): Point | undefined {
     const pts = this.get(level, id, crop, product).filter((p) => p.week < week);
     return pts[pts.length - 1];
   }
