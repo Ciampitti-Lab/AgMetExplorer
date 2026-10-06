@@ -193,10 +193,6 @@ export class App {
       level,
       selected: this.state.unit,
       fill: (id) => colorFor(product, this.value(level, id, product)?.value),
-      label: (id) => {
-        const p = this.value(level, id, product);
-        return p ? p.value.toFixed(2).replace(/^0/, "") : "";
-      },
       tooltip: (id) => {
         const u = this.data.units[level].get(id);
         const p = this.value(level, id, product);

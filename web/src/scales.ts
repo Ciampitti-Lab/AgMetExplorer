@@ -105,11 +105,3 @@ export function conditionLabel(v: number): string {
   const i = Math.min(4, Math.max(0, Math.round(v) - 1));
   return CONDITION_LABELS[i] ?? "";
 }
-
-/** Dark or light text for a label drawn on top of a fill color. */
-export function labelColor(fill: string): string {
-  const m = fill.match(/\d+/g);
-  const rgb = fill.startsWith("#") ? hexToRgb(fill) : (m ?? []).slice(0, 3).map(Number);
-  const [r = 0, g = 0, b = 0] = rgb;
-  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#111111" : "#f4f1ea";
-}

@@ -306,25 +306,6 @@ h4 {
   border-color: var(--line) !important;
 }
 
-.map-label {
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
-.map-label span {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.map-label.district span {
-  font-family: var(--font-head);
-  font-size: 15px;
-}
-
 .unit-tip {
   padding: 7px 10px;
   border: 1px solid #333;
