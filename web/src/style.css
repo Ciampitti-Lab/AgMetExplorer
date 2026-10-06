@@ -1242,7 +1242,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* name, stats and tools share one row only when the panel itself is wide enough */
-@container detail (min-width: 860px) {
+@container detail (min-width: 1000px) {
   .d-head {
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas: "title stats tools";
@@ -1363,19 +1363,15 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* short laptop screens: tighter head, picker hidden (the map is the selector) */
+/* laptop widths: a narrower dropdown so the name keeps its room */
 @media (min-width: 1100px) and (min-height: 660px) and (max-width: 1599px) {
-  .head-tools .picker {
-    display: none;
+  .picker select {
+    max-width: 170px;
   }
 }
 
 @media (min-width: 1100px) and (min-height: 660px) and (max-width: 1399px) {
   .d-sub {
-    display: none;
-  }
-
-  .stat-meta .stat-ref {
     display: none;
   }
 }
@@ -1394,8 +1390,7 @@ input[type="range"]::-moz-range-thumb {
     font-size: 1.3rem;
   }
 
-  .meter,
-  .stat-ref {
+  .meter {
     display: none;
   }
 }
