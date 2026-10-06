@@ -1,0 +1,21 @@
+# generated data (built in CI)
+web/public/data/
+web/public/agmet/
+# raw sources
+*.zip
+*.tif
+*.tfw
+*.aux.xml
+.DS_Store
+._*
+__MACOSX/
+# env / deps
+node_modules/
+dist/
+.venv/
+.envrc
+__pycache__/
+.ruff_cache/
+.pytest_cache/
+.direnv/
+
