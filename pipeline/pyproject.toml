@@ -1,0 +1,29 @@
+[project]
+name = "agmet-explorer-pipeline"
+version = "0.1.0"
+description = "NASS crop progress zonal stats and AgMet graphics ingest for AgMet Explorer"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "exactextract>=0.3.0",
+    "geopandas>=1.2.0",
+    "pandas>=3.0.6",
+    "pillow>=12.3.0",
+    "rasterio>=1.5.2",
+    "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.uv]
+package = false
