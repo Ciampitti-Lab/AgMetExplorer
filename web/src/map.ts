@@ -1,6 +1,7 @@
 import L from "leaflet";
 import type { Feature, Geometry } from "geojson";
 import type { AppData } from "./data";
+import { palette } from "./theme";
 import type { Level } from "./types";
 
 export interface MapView {
@@ -9,9 +10,6 @@ export interface MapView {
   fill: (id: string) => string;
   tooltip: (id: string) => string;
 }
-
-const BASE_STYLE: L.PathOptions = { color: "#0a0a0a", weight: 0.8, fillOpacity: 0.92 };
-const HOVER_STYLE: L.PathOptions = { color: "#eae6e5", weight: 2 };
 
 function unitId(level: Level, f: Feature<Geometry, Record<string, string>>): string {
   return (level === "county" ? f.properties.GEOID : f.properties.ASD_CODE) ?? "";
@@ -28,6 +26,9 @@ export class UnitMap {
   private view: MapView | null = null;
   private hovered: string | null = null;
   private bounds: L.LatLngBounds;
+  // one shared tooltip: per-county tooltips piled up on touch screens and while scrolling
+  private tip = L.tooltip({ direction: "right", offset: [14, 0], className: "unit-tip" });
+  private hoverable = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   constructor(
     el: HTMLElement,
@@ -52,6 +53,27 @@ export class UnitMap {
       this.map.invalidateSize();
       this.fit();
     }).observe(el);
+    el.addEventListener("mouseleave", () => this.unhover());
+    window.addEventListener("scroll", () => this.unhover(), { passive: true });
+  }
+
+  private hover(id: string, path: L.Path, at: L.LatLng): void {
+    if (!this.hoverable) return;
+    if (this.hovered && this.hovered !== id) this.unhover();
+    this.hovered = id;
+    path.setStyle(this.styleFor(id));
+    path.bringToFront();
+    this.raise();
+    this.tip.setContent(this.view?.tooltip(id) ?? "").setLatLng(at);
+    if (!this.map.hasLayer(this.tip)) this.tip.addTo(this.map);
+  }
+
+  private unhover(): void {
+    const prev = this.hovered;
+    this.hovered = null;
+    if (prev) this.paths.get(prev)?.setStyle(this.styleFor(prev));
+    this.tip.remove();
+    this.raise();
   }
 
   fit(): void {
@@ -83,13 +105,26 @@ export class UnitMap {
     this.selection = L.layerGroup([
       L.geoJSON(feature, {
         interactive: false,
-        style: { color: "#050505", weight: 8, opacity: 0.85, fill: false },
+        style: { color: palette().halo, weight: 8, opacity: 0.85, fill: false },
       }),
       L.geoJSON(feature, {
         interactive: false,
-        style: { color: "#cfb991", weight: 3, fill: false },
+        style: { color: palette().select, weight: 3, fill: false },
       }),
     ]).addTo(this.map);
+  }
+
+  private outlineStyle(): L.PathOptions {
+    return { color: palette().outline, weight: 2.4, fill: false, opacity: 0.9 };
+  }
+
+  /** Re-apply stroke colors after the theme changes. */
+  restyle(): void {
+    this.outlines?.setStyle(this.outlineStyle());
+    const id = this.selectedId;
+    this.drawSelection(null);
+    this.drawSelection(id);
+    if (this.view) this.render(this.view);
   }
 
   private raise(): void {
@@ -99,12 +134,19 @@ export class UnitMap {
 
   private styleFor(id: string): L.PathOptions {
     const v = this.view;
-    const base = { ...BASE_STYLE, fillColor: v ? v.fill(id) : "#1d1d1d" };
-    if (this.hovered === id && v?.selected !== id) return { ...base, ...HOVER_STYLE };
+    const c = palette();
+    const base = {
+      color: c.border,
+      weight: 0.8,
+      fillOpacity: 0.92,
+      fillColor: v ? v.fill(id) : c.noFill,
+    };
+    if (this.hovered === id && v?.selected !== id) return { ...base, color: c.hover, weight: 2 };
     return base;
   }
 
   private build(level: Level): void {
+    this.unhover();
     this.units?.remove();
     this.outlines?.remove();
     this.drawSelection(null);
@@ -113,33 +155,22 @@ export class UnitMap {
 
     const fc = level === "county" ? this.data.counties : this.data.districts;
     this.units = L.geoJSON(fc as GeoJSON.FeatureCollection, {
-      style: () => BASE_STYLE,
+      style: () => ({ color: palette().border, weight: 0.8, fillOpacity: 0.92 }),
       onEachFeature: (feature, layer) => {
         const id = unitId(level, feature as Feature<Geometry, Record<string, string>>);
         const path = layer as L.Path;
         this.paths.set(id, path);
-        if (!L.Browser.mobile) {
-          path.bindTooltip(() => this.view?.tooltip(id) ?? "", {
-            sticky: true,
-            // to the right of the cursor so it is not clipped above northern counties
-            direction: "right",
-            offset: [14, 0],
-            className: "unit-tip",
-          });
-        }
         path.on({
-          mouseover: () => {
-            this.hovered = id;
-            path.setStyle(this.styleFor(id));
-            path.bringToFront();
-            this.raise();
+          mouseover: (e: L.LeafletMouseEvent) => this.hover(id, path, e.latlng),
+          // tooltip sits to the right of the cursor so it is not clipped above northern counties
+          mousemove: (e: L.LeafletMouseEvent) => {
+            if (this.hovered === id) this.tip.setLatLng(e.latlng);
           },
-          mouseout: () => {
-            this.hovered = null;
-            path.setStyle(this.styleFor(id));
-            this.raise();
+          mouseout: () => this.unhover(),
+          click: () => {
+            this.unhover();
+            this.onSelect(id);
           },
-          click: () => this.onSelect(id),
         });
       },
     }).addTo(this.map);
@@ -148,7 +179,7 @@ export class UnitMap {
     if (level === "county") {
       this.outlines = L.geoJSON(this.data.districts as GeoJSON.FeatureCollection, {
         interactive: false,
-        style: { color: "#0a0a0a", weight: 2.4, fill: false, opacity: 0.9 },
+        style: () => this.outlineStyle(),
       }).addTo(this.map);
     } else {
       this.outlines = null;

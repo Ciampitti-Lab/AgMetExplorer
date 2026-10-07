@@ -1,3 +1,4 @@
+import { palette } from "./theme";
 import type { Product } from "./types";
 
 type Stop = [number, string];
@@ -46,7 +47,9 @@ const SCALES: Record<Product, Scale> = {
 
 export const CONDITION_DOMAIN = SCALES.cond.domain;
 
-export const NO_DATA = "#2a2a2a";
+export function noDataColor(): string {
+  return palette().noFill;
+}
 
 export const CONDITION_LABELS = ["Very poor", "Poor", "Fair", "Good", "Excellent"] as const;
 
@@ -58,7 +61,7 @@ function hexToRgb(hex: string): [number, number, number] {
 function interpolate(stops: Stop[], v: number): string {
   const first = stops[0];
   const last = stops[stops.length - 1];
-  if (!first || !last) return NO_DATA;
+  if (!first || !last) return noDataColor();
   if (v <= first[0]) return first[1];
   if (v >= last[0]) return last[1];
   for (let i = 1; i < stops.length; i++) {
@@ -83,7 +86,7 @@ function bandColor(s: Scale, band: number): string {
 }
 
 export function colorFor(product: Product, v: number | undefined): string {
-  if (v === undefined) return NO_DATA;
+  if (v === undefined) return noDataColor();
   const s = SCALES[product];
   const band = Math.floor((v - s.domain[0]) / s.step);
   return bandColor(s, Math.min(bandCount(s) - 1, Math.max(0, band)));

@@ -2,8 +2,9 @@ import { renderChart, type Series } from "./chart";
 import { parseDate, type AppData } from "./data";
 import { UnitMap } from "./map";
 import { ImageViewer } from "./viewer";
-import { NO_DATA, colorFor, conditionLabel, gradientCss } from "./scales";
+import { colorFor, noDataColor, conditionLabel, gradientCss } from "./scales";
 import { readHash, writeHash, type State } from "./state";
+import { initTheme } from "./theme";
 import type { Crop, Level, Product, SeriesLevel, Unit } from "./types";
 
 const CROP_NAMES: Record<Crop, string> = { corn: "Corn", soybeans: "Soybeans" };
@@ -37,8 +38,20 @@ const ICONS = {
   pin: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>`,
   close: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>`,
   zoom: `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm1 2v3h3v2h-3v3H9v-3H6V9h3V6h2Z"/></svg>`,
+  grow: `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M14 3h7v7h-2V6.4l-5.3 5.3-1.4-1.4L17.6 5H14V3ZM3 14h2v3.6l5.3-5.3 1.4 1.4L6.4 19H10v2H3v-7Z"/></svg>`,
+  shrink: `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M19.6 3 21 4.4 16.4 9H20v2h-7V4h2v3.6L19.6 3ZM4 13h7v7H9v-3.6L4.4 21 3 19.6 7.6 15H4v-2Z"/></svg>`,
   down: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 16.6 5.4 10 6.8 8.6l5.2 5.2 5.2-5.2 1.4 1.4L12 16.6Z"/></svg>`,
 };
+
+const FOCUS_KEY = "agmet-focus";
+
+function readFocus(): boolean {
+  try {
+    return localStorage.getItem(FOCUS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 export class App {
   private state: State;
@@ -49,6 +62,8 @@ export class App {
   private detail = $("#detail");
   private peek = $("#peek");
   private lightbox = $("#lightbox") as HTMLDialogElement;
+  // larger AgMet graphic is the default; the NASS charts shrink to a short strip
+  private focus = readFocus();
   private viewer = new ImageViewer(
     $(".lb-stage"),
     $(".lb-canvas"),
@@ -71,6 +86,10 @@ export class App {
     this.bindDialogs();
     this.bindPeek();
     this.renderStatus();
+    initTheme(() => {
+      this.map.restyle();
+      this.render();
+    });
 
     new ResizeObserver(() => {
       if (this.measureCharts() !== this.chartSizes) this.renderCharts();
@@ -224,7 +243,7 @@ export class App {
       <div class="legend-step">Bands of ${step}</div>
       <div class="legend-bar" style="background:${gradientCss(product)}"></div>
       <div class="legend-ticks">${ticks}</div>
-      <div class="legend-nodata"><i style="background:${NO_DATA}"></i>No data</div>`;
+      <div class="legend-nodata"><i style="background:${noDataColor()}"></i>No data</div>`;
   }
 
   // ---- detail panel
@@ -290,6 +309,7 @@ export class App {
   private renderDetail(): void {
     const u = this.unit();
     this.detail.classList.toggle("is-overview", !u);
+    document.body.classList.toggle("agmet-focus", Boolean(u) && this.focus);
     this.detail.innerHTML = u ? this.unitHtml(u) : this.overviewHtml();
 
     this.detail
@@ -308,6 +328,15 @@ export class App {
         $(".map-hint").classList.add("is-hidden");
         this.set({ level: "district", unit: el.dataset.district ?? null });
       });
+    });
+    this.detail.querySelector("[data-focus]")?.addEventListener("click", () => {
+      this.focus = !this.focus;
+      try {
+        localStorage.setItem(FOCUS_KEY, this.focus ? "1" : "0");
+      } catch {
+        // private mode: the choice lasts for this visit
+      }
+      this.renderDetail();
     });
     this.detail.querySelector<HTMLButtonElement>(".agmet-thumb")?.addEventListener("click", (e) => {
       const path = (e.currentTarget as HTMLElement).dataset.full ?? "";
@@ -366,6 +395,9 @@ export class App {
         <header class="card-head">
           <h3>AgMet graphic</h3>
           <span class="muted">NASA Harvest${agmet ? `, updated ${fmtDate(agmet.updated)}` : ""}</span>
+          <button type="button" class="size-btn" data-focus aria-pressed="${this.focus}">
+            ${this.focus ? ICONS.shrink : ICONS.grow}${this.focus ? "Smaller graphic" : "Larger graphic"}
+          </button>
         </header>
         ${agmetHtml}
       </section>

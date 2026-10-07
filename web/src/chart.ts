@@ -1,5 +1,6 @@
 import * as Plot from "@observablehq/plot";
 import { CONDITION_DOMAIN, CONDITION_LABELS, colorFor, conditionLabel } from "./scales";
+import { palette } from "./theme";
 import type { Point, Product } from "./types";
 
 export interface Series {
@@ -18,9 +19,6 @@ export interface ChartInput {
   width: number;
   height: number;
 }
-
-const GOLD = "#cfb991";
-const MUTED = "#9a9a9a";
 
 const dateFmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -54,6 +52,7 @@ export function renderChart(i: ChartInput): Element {
   const curve = "monotone-x";
   const dips = isProg ? primary.filter((p) => p.raw < p.value - 0.0005) : [];
   const faint = i.referenceStyle === "faint";
+  const c = palette();
 
   const condDomain = conditionDomain([i.primary, ...i.references]);
   const y: Plot.ScaleOptions = isProg
@@ -79,7 +78,7 @@ export function renderChart(i: ChartInput): Element {
     marginBottom: 24,
     style: {
       background: "transparent",
-      color: MUTED,
+      color: c.muted,
       fontFamily: "'Inter Variable', system-ui, sans-serif",
       fontSize: "11px",
       overflow: "visible",
@@ -87,12 +86,11 @@ export function renderChart(i: ChartInput): Element {
     x: { type: "utc", domain: season(i.year), ticks: "month", tickFormat: "%b", label: null },
     y,
     marks: [
-      Plot.gridX({ ticks: "month", stroke: "#ffffff", strokeOpacity: 0.05 }),
-      isProg ? Plot.ruleY([0], { stroke: "#ffffff", strokeOpacity: 0.25 }) : null,
+      Plot.gridX({ ticks: "month", stroke: c.grid, strokeOpacity: 1 }),
+      isProg ? Plot.ruleY([0], { stroke: c.axis }) : null,
       i.selected
         ? Plot.ruleX([i.selected], {
-            stroke: "#eae6e5",
-            strokeOpacity: 0.45,
+            stroke: c.cursor,
             strokeDasharray: "3 3",
           })
         : null,
@@ -100,23 +98,22 @@ export function renderChart(i: ChartInput): Element {
         x: "date",
         y: "value",
         z: "label",
-        stroke: faint ? "#ffffff" : "#8b8b8b",
-        strokeOpacity: faint ? 0.18 : 1,
+        stroke: faint ? c.faint : c.reference,
         strokeWidth: faint ? 1.2 : 1.5,
         strokeDasharray: faint ? undefined : "5 4",
         curve,
       }),
       isProg
-        ? Plot.areaY(primary, { x: "date", y: "value", fill: GOLD, fillOpacity: 0.08, curve })
+        ? Plot.areaY(primary, { x: "date", y: "value", fill: c.primary, fillOpacity: 0.1, curve })
         : null,
-      Plot.line(primary, { x: "date", y: "value", stroke: GOLD, strokeWidth: 2.4, curve }),
-      Plot.dot(dips, { x: "date", y: "raw", r: 2, fill: MUTED, fillOpacity: 0.8 }),
+      Plot.line(primary, { x: "date", y: "value", stroke: c.primary, strokeWidth: 2.4, curve }),
+      Plot.dot(dips, { x: "date", y: "raw", r: 2, fill: c.muted, fillOpacity: 0.8 }),
       Plot.dot(primary, {
         x: "date",
         y: "value",
         r: 2.8,
-        fill: isProg ? GOLD : (p: Point) => colorFor("cond", p.value),
-        stroke: "#0f0f0f",
+        fill: isProg ? c.primary : (p: Point) => colorFor("cond", p.value),
+        stroke: c.dotStroke,
         strokeWidth: 1,
       }),
       Plot.tip(
@@ -125,8 +122,8 @@ export function renderChart(i: ChartInput): Element {
           x: "date",
           y: "value",
           title: (p: Point) => tipText(p, i.product, i.primary.label),
-          fill: "#161616",
-          stroke: "#3a3a3a",
+          fill: c.tipFill,
+          stroke: c.tipStroke,
           textPadding: 8,
         }),
       ),
